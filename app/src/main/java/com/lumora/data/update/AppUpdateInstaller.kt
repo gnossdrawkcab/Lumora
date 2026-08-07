@@ -4,13 +4,17 @@ import android.app.DownloadManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.Settings
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import com.lumora.BuildConfig
 import java.io.File
+import java.security.MessageDigest
 
 /**
  * Downloads and installs APK updates from GitHub releases.
@@ -25,6 +29,9 @@ class AppUpdateInstaller(private val context: Context) {
      * Returns the DownloadManager ID for tracking progress.
      */
     fun downloadApk(downloadUrl: String, versionName: String): Long {
+        require(UpdateVerifier.isTrustedReleaseUrl(downloadUrl, BuildConfig.UPDATE_REPOSITORY)) {
+            "Update URL is not an official Lumora GitHub release asset"
+        }
         val fileName = "Lumora_v$versionName.apk"
         val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
 
@@ -41,6 +48,47 @@ class AppUpdateInstaller(private val context: Context) {
             .setAllowedOverRoaming(true)
 
         return downloadManager.enqueue(request)
+    }
+
+    /**
+     * Verifies content integrity, package identity, and signing identity before the APK ever
+     * reaches the system installer. Returns a user-facing rejection reason, or null when safe.
+     */
+    fun verifyDownloadedApk(filePath: String, expectedSha256: String?): String? {
+        val file = File(filePath)
+        if (!file.isFile) return "downloaded APK is missing"
+        if (!UpdateVerifier.matchesSha256(file, expectedSha256)) return "SHA-256 checksum mismatch"
+
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            PackageManager.GET_SIGNING_CERTIFICATES
+        } else {
+            @Suppress("DEPRECATION")
+            PackageManager.GET_SIGNATURES
+        }
+        @Suppress("DEPRECATION")
+        val archive = context.packageManager.getPackageArchiveInfo(file.absolutePath, flags)
+            ?: return "file is not a valid Android package"
+        if (archive.packageName != context.packageName) return "package name does not match Lumora"
+
+        @Suppress("DEPRECATION")
+        val installed = context.packageManager.getPackageInfo(context.packageName, flags)
+        if (certificateDigests(archive) != certificateDigests(installed)) {
+            return "APK signing certificate does not match the installed app"
+        }
+        return null
+    }
+
+    private fun certificateDigests(info: PackageInfo): Set<String> {
+        @Suppress("DEPRECATION")
+        val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.signingInfo?.apkContentsSigners.orEmpty().toList()
+        } else {
+            info.signatures.orEmpty().toList()
+        }
+        return signatures.mapTo(mutableSetOf()) { signature ->
+            MessageDigest.getInstance("SHA-256").digest(signature.toByteArray())
+                .joinToString("") { "%02x".format(it) }
+        }
     }
 
     /**

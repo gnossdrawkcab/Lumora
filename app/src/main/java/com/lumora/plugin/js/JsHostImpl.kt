@@ -108,11 +108,12 @@ class JsHostImpl(
             headers.forEach { (k, v) -> header(k, v.toString()) }
         }.get().build()
         execute(context, request)
-    }.getOrElse { failedResponse(context, "GET", url = args.getOrNull(0) as? String, it) }
+    }.getOrElse { failedResponse(context, "GET", it) }
 
     private fun httpPost(context: QuickJSContext, args: Array<out Any?>): JSObject = runCatching {
         val url = args[0] as String
         val body = (args.getOrNull(1) as? String).orEmpty()
+        require(body.toByteArray(Charsets.UTF_8).size <= MAX_POST_BODY_BYTES) { "POST body is too large" }
         val headers = (args.getOrNull(2) as? JSObject)?.toMap().orEmpty()
         val contentType = headers.entries
             .firstOrNull { it.key.equals("Content-Type", ignoreCase = true) }
@@ -122,7 +123,7 @@ class JsHostImpl(
             headers.forEach { (k, v) -> header(k, v.toString()) }
         }.post(body.toRequestBody(contentType.toMediaTypeOrNull())).build()
         execute(context, request)
-    }.getOrElse { failedResponse(context, "POST", url = args.getOrNull(0) as? String, it) }
+    }.getOrElse { failedResponse(context, "POST", it) }
 
     /**
      * Fires a batch of GET requests concurrently and returns their responses in input order.
@@ -140,7 +141,7 @@ class JsHostImpl(
         val requests = args.getOrNull(0) as? JSArray ?: return out
         // Read each request off the JS heap here, on the JS thread - JSObject access must not
         // happen from the worker threads below.
-        val specs = (0 until requests.length()).map { i ->
+        val specs = (0 until minOf(requests.length(), MAX_BATCH_REQUESTS)).map { i ->
             val o = (requests.get(i) as? JSObject)?.toMap().orEmpty()
             val url = o["url"] as? String ?: ""
             @Suppress("UNCHECKED_CAST")
@@ -156,7 +157,7 @@ class JsHostImpl(
                         val builder = Request.Builder().url(url)
                         headers.forEach { (k, v) -> builder.header(k, v) }
                         client.newCall(builder.get().build()).execute().use { resp ->
-                            resp.code to resp.body?.string().orEmpty()
+                            resp.code to resp.body?.readUtf8Capped(MAX_RESPONSE_BYTES).orEmpty()
                         }
                     }.getOrElse { 0 to "" }
                 })
@@ -176,16 +177,16 @@ class JsHostImpl(
     /** The returned [JSObject] is handed back to JS by the caller - do not release it here. */
     private fun execute(context: QuickJSContext, request: Request): JSObject {
         client.newCall(request).execute().use { response ->
-            PluginLog.d(TAG, "${request.method} ${request.url} -> ${response.code} (${response.body?.contentLength() ?: -1} bytes)")
+            PluginLog.d(TAG, "${request.method} ${request.url.redact()} -> ${response.code} (${response.body?.contentLength() ?: -1} bytes)")
             val obj = context.createNewJSObject()
             obj.setProperty("status", response.code)
-            obj.setProperty("body", response.body?.string().orEmpty())
+            obj.setProperty("body", response.body?.readUtf8Capped(MAX_RESPONSE_BYTES).orEmpty())
             return obj
         }
     }
 
-    private fun failedResponse(context: QuickJSContext, method: String, url: String?, error: Throwable): JSObject {
-        PluginLog.w(TAG, "$method $url failed: ${error.message}")
+    private fun failedResponse(context: QuickJSContext, method: String, error: Throwable): JSObject {
+        PluginLog.w(TAG, "$method plugin request failed: ${error.message}")
         val obj = context.createNewJSObject()
         obj.setProperty("status", 0)
         obj.setProperty("body", "")
@@ -391,5 +392,8 @@ class JsHostImpl(
         /** Cap on concurrent host.httpGetAll requests, so a big batch doesn't open a socket per
          *  provider at once (memory + fd pressure from multi-MB playlist bodies). */
         private const val MAX_PARALLEL_REQUESTS = 8
+        private const val MAX_BATCH_REQUESTS = 24
+        private const val MAX_RESPONSE_BYTES = 5 * 1024 * 1024
+        private const val MAX_POST_BODY_BYTES = 1024 * 1024
     }
 }

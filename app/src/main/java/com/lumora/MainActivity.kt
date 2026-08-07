@@ -133,6 +133,7 @@ import com.lumora.data.remote.jellyfin.JellyfinProvider
 import com.lumora.player.playback.PlayerDiagnostics
 import com.lumora.data.update.AppUpdateChecker
 import com.lumora.data.update.AppUpdateInstaller
+import com.lumora.data.security.SecurePreferences
 import com.lumora.data.domain.CombinedM3uProfile
 import com.lumora.data.domain.CombinedM3uRepository
 import com.lumora.player.playback.AvOffsetManager
@@ -792,7 +793,9 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
         applySystemBarInsets()
 
-        prefs = getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
+        // Provider credentials and Jellyfin bearer tokens must never live in plaintext prefs.
+        // SecurePreferences performs a one-time, commit-before-delete migration of the old file.
+        prefs = SecurePreferences.open(this)
         // Cheap (no network) - just parses each script's PLUGIN manifest header - but async
         // since it runs the JS engine, so kick it off early rather than on first use.
         // loadSavedProvider()'s gate (see loadAllConfiguredProviders) checks enabledStreamSearchPlugin(),
@@ -875,6 +878,9 @@ class MainActivity : AppCompatActivity() {
 
     /** Checked once per launch, straight off GitHub Releases - not tucked inside Settings. */
     private fun checkAndPromptUpdate() {
+        // A debug build is signed with a developer key and cannot safely replace the release
+        // package. It also uses a distinct applicationId, so update prompts would only fail.
+        if (BuildConfig.DEBUG) return
         scope.launch {
             val updater = AppUpdateChecker(this@MainActivity)
             val info = withContext(Dispatchers.IO) { updater.checkForUpdate() } ?: return@launch
@@ -882,7 +888,9 @@ class MainActivity : AppCompatActivity() {
             AlertDialog.Builder(this@MainActivity)
                 .setTitle("Update available")
                 .setMessage("Lumora v${info.latestVersion} is available.\nCurrent: v${info.currentVersion}\n\n${info.releaseNotes.take(200)}")
-                .setPositiveButton("Update") { _, _ -> downloadAndInstallUpdate(info.downloadUrl, info.latestVersion) }
+                .setPositiveButton("Update") { _, _ ->
+                    downloadAndInstallUpdate(info.downloadUrl, info.latestVersion, info.sha256)
+                }
                 .setNegativeButton("Later", null)
                 .show()
         }
@@ -890,9 +898,14 @@ class MainActivity : AppCompatActivity() {
 
     /** Downloads the release APK via DownloadManager, then hands it to the system package
      *  installer as soon as the download finishes - no separate "tap to install" step. */
-    internal fun downloadAndInstallUpdate(downloadUrl: String, versionName: String) {
+    internal fun downloadAndInstallUpdate(downloadUrl: String, versionName: String, expectedSha256: String?) {
         val installer = AppUpdateInstaller(this)
-        val downloadId = installer.downloadApk(downloadUrl, versionName)
+        val downloadId = try {
+            installer.downloadApk(downloadUrl, versionName)
+        } catch (e: IllegalArgumentException) {
+            Toast.makeText(this, "Update rejected: ${e.message}", Toast.LENGTH_LONG).show()
+            return
+        }
         Toast.makeText(this, "Downloading update…", Toast.LENGTH_SHORT).show()
         scope.launch {
             while (true) {
@@ -904,6 +917,13 @@ class MainActivity : AppCompatActivity() {
                 if (installer.isDownloadComplete(downloadId)) {
                     val path = installer.getDownloadedFilePath(downloadId)
                     if (path != null) {
+                        val rejection = withContext(Dispatchers.IO) {
+                            installer.verifyDownloadedApk(path, expectedSha256)
+                        }
+                        if (rejection != null) {
+                            Toast.makeText(this@MainActivity, "Update rejected: $rejection", Toast.LENGTH_LONG).show()
+                            break
+                        }
                         // If the user had to be sent to grant "install unknown apps",
                         // installApk() returns false - retry once automatically after
                         // they've had time to flip it, instead of making them come back

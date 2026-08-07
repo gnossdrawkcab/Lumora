@@ -9,6 +9,13 @@ import com.lumora.cache.RecentlyPlayedStore
 import com.lumora.model.Channel
 import com.lumora.model.MediaType
 import com.lumora.player.PlayerManager
+import com.lumora.player.PlaybackResolver
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The car session's own player and channel list.
@@ -24,6 +31,9 @@ import com.lumora.player.PlayerManager
 class CarPlayback(private val context: Context) {
 
     private val player = PlayerManager(context)
+    private val resolver = PlaybackResolver.from(context)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var playGeneration = 0L
 
     var channels: List<Channel> = emptyList()
         private set
@@ -35,8 +45,8 @@ class CarPlayback(private val context: Context) {
 
     /**
      * Live channels that can be played from a URL alone. Stalker commands, plugin tokens and
-     * Jellyfin's negotiated streams all need a round trip through code that lives in the
-     * Activity, so they are left out rather than offered as rows that fail on tap.
+     * plugin tokens still require UI/plugin state that is not safe to recreate in a car
+     * session. Jellyfin is resolved by the shared PlaybackResolver and is supported here.
      */
     fun loadCatalog(): List<Channel> {
         val cached = ChannelCache.load(context).orEmpty()
@@ -68,11 +78,16 @@ class CarPlayback(private val context: Context) {
     fun play(channel: Channel) {
         current = channel
         RecentlyPlayedStore.recordPlayed(context, channel.id)
-        player.playUrl(
-            url = channel.url,
-            userAgent = channel.streamUserAgent,
-            headers = channel.streamHeaders,
-        )
+        val generation = ++playGeneration
+        scope.launch {
+            val resolved = withContext(Dispatchers.IO) { resolver.resolve(channel) }.getOrNull()
+            if (generation != playGeneration || resolved == null) return@launch
+            player.playUrl(
+                url = resolved.url,
+                userAgent = resolved.userAgent,
+                headers = resolved.headers,
+            )
+        }
     }
 
     /** Next/previous within whatever list the user was browsing, wrapping at the ends -
@@ -111,6 +126,8 @@ class CarPlayback(private val context: Context) {
     fun addListener(listener: Player.Listener) = player.addListener(listener)
 
     fun release() {
+        playGeneration++
+        scope.cancel()
         player.setVideoSurface(null)
         player.release()
     }

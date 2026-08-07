@@ -11,6 +11,7 @@ import com.lumora.plugin.TorrentResult
 import com.whl.quickjs.wrapper.JSObject
 import com.whl.quickjs.wrapper.QuickJSContext
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -134,7 +135,9 @@ class JsPluginEngine(private val httpClient: OkHttpClient = OkHttpClient()) {
     }
 
     suspend fun resolve(source: String, token: String, season: Int?, episode: Int?): ResolveResult {
-        PluginLog.i(TAG, "resolve() start: token=$token season=$season episode=$episode")
+        // Tokens can contain signed URLs, provider credentials, or magnet identifiers. Never
+        // copy them into logcat, which is routinely collected in support diagnostics.
+        PluginLog.i(TAG, "resolve() start: token=<redacted> season=$season episode=$episode")
         val host = JsHostImpl(
             client = httpClient,
             token = token,
@@ -209,7 +212,9 @@ class JsPluginEngine(private val httpClient: OkHttpClient = OkHttpClient()) {
      * background thread - this QuickJS binding has no exposed way to interrupt a script that's
      * stuck in a synchronous, non-I/O loop (unlike the old Messenger protocol, where a wedged
      * plugin ran in its own OS process and the host just stopped listening to it). A script
-     * busy-looping with no host calls leaks that one thread for as long as it runs; every I/O
+     * busy-looping with no host calls occupies the one shared plugin thread for as long as it
+     * runs. The runtime is marked poisoned after that timeout, so later calls fail immediately
+     * instead of spawning an unlimited number of stuck, CPU-consuming threads. Every I/O
      * call it makes (`host.httpGet`, etc.) is still bounded by OkHttp's own timeouts, which
      * covers the realistic slow-plugin case. This is a deliberate, documented trade-off for
      * running plugins in-process instead of as separate installable apps.
@@ -219,10 +224,12 @@ class JsPluginEngine(private val httpClient: OkHttpClient = OkHttpClient()) {
         host: JsHostImpl,
         body: (QuickJSContext) -> Any?,
     ): ScriptOutcome {
-        val executor = Executors.newSingleThreadExecutor()
-        return withTimeoutOrNull(timeoutMs) {
+        if (runtimePoisoned.get()) {
+            return ScriptOutcome.Failure("Plugin runtime disabled after a previous script timeout; restart Lumora")
+        }
+        val result = withTimeoutOrNull(timeoutMs) {
             suspendCancellableCoroutine { cont ->
-                executor.execute {
+                pluginExecutor.execute {
                     val outcome: ScriptOutcome = try {
                         val context = QuickJSContext.create()
                         try {
@@ -235,10 +242,11 @@ class JsPluginEngine(private val httpClient: OkHttpClient = OkHttpClient()) {
                         ScriptOutcome.Failure(shortMessage(e))
                     }
                     runCatching { cont.resume(outcome) }
-                    executor.shutdown()
                 }
             }
-        } ?: ScriptOutcome.TimedOut
+        }
+        if (result == null) runtimePoisoned.set(true)
+        return result ?: ScriptOutcome.TimedOut
     }
 
     /** QuickJSException appends a JS stack trace after the message on its own lines - keep only the first. */
@@ -320,5 +328,11 @@ class JsPluginEngine(private val httpClient: OkHttpClient = OkHttpClient()) {
         private const val MANIFEST_PROBE_TIMEOUT_MS = 5_000L
         /** Cap on sideloaded tracks, same idea as the report caps in [JsPluginContract]. */
         private const val MAX_SUBTITLES = 20
+        /** One process-wide worker bounds the damage from QuickJS's non-interruptible native
+         *  execution. A wedged script can consume one thread, never one new thread per tap. */
+        private val pluginExecutor = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "LumoraPluginRuntime").apply { isDaemon = true }
+        }
+        private val runtimePoisoned = AtomicBoolean(false)
     }
 }

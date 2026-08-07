@@ -15,6 +15,7 @@ import com.lumora.plugin.PluginSubtitle
 import com.lumora.player.PlayerManager
 import com.lumora.util.normalizeServerUrl
 import com.lumora.data.remote.jellyfin.JellyfinProvider
+import com.lumora.data.remote.jellyfin.JellyfinConnector
 import kotlinx.coroutines.*
 import okhttp3.Request
 
@@ -36,23 +37,9 @@ internal fun MainActivity.jellyfinProviderStub(url: String?): Provider =
 /** Authenticates (or restores) a Jellyfin session against [url]. Failure message is
  *  already user-facing. */
 internal suspend fun MainActivity.connectJellyfin(url: String): Result<JellyfinProvider> {
-    val jellyfin = JellyfinProvider(BaseApplication.instance.okHttpClient)
-    val savedToken = prefs.getString("jellyfin_token", null)
-    val savedUserId = prefs.getString("jellyfin_userid", null)
-    if (!savedToken.isNullOrBlank() && !savedUserId.isNullOrBlank()) {
-        // Quick Connect never yields a password to re-authenticate with later -
-        // reuse the session it already gave us instead.
-        jellyfin.restoreSession(url, savedToken, savedUserId)
-    } else {
-        val username = prefs.getString("jellyfin_user", null)
-            ?: return Result.failure(Exception("Jellyfin: no username"))
-        val password = prefs.getString("jellyfin_pass", null).orEmpty()
-        val authResult = withContext(Dispatchers.IO) { jellyfin.authenticate(url, username, password) }
-        if (authResult.isFailure) {
-            return Result.failure(Exception("Jellyfin: ${authResult.exceptionOrNull()?.message?.take(60)}"))
-        }
-    }
-    return Result.success(jellyfin)
+    return JellyfinConnector(BaseApplication.instance.okHttpClient, prefs)
+        .connect(url)
+        .map { it.provider }
 }
 
 /** The live Jellyfin session, reconnecting on demand. A cold start that hits the channel

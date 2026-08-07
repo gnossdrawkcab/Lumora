@@ -72,6 +72,18 @@ internal fun MainActivity.showAddEpgSourceDialog() {
 
 // ── Jellyfin Quick Connect ─────────────────────
 
+/** Cleartext remains available because many user-supplied IPTV/Jellyfin servers only expose
+ *  HTTP, but saving one must make the credential-exposure tradeoff visible. */
+internal fun MainActivity.warnIfCleartextTransport(url: String) {
+    if (url.startsWith("http://", ignoreCase = true)) {
+        Toast.makeText(
+            this,
+            "Warning: this provider uses unencrypted HTTP; credentials and viewing traffic may be visible on the network",
+            Toast.LENGTH_LONG,
+        ).show()
+    }
+}
+
 /** Runs the Jellyfin Quick Connect handshake against [url]: starts a code (or reuses
  *  [existing] if the QR flow already started one and showed it on the phone - starting
  *  a second one here would mint a different code than what's on screen there), polls
@@ -488,6 +500,7 @@ internal fun MainActivity.showProviderSettings() {
             when (type) {
                 "m3u" -> {
                     val url = form["m3uUrl"]?.let { normalizeServerUrl(it) } ?: return@runOnUiThread
+                    warnIfCleartextTransport(url)
                     IptvProviderStore.upsert(prefs, IptvProviderConfig(
                         id = IptvProviderStore.newId(), type = "m3u", name = form["name"]?.takeIf { it.isNotBlank() } ?: "QR M3U",
                         enabled = true, url = url, userAgent = form["userAgent"]
@@ -499,6 +512,7 @@ internal fun MainActivity.showProviderSettings() {
                 }
                 "xtream" -> {
                     val su = form["serverUrl"]?.let { normalizeServerUrl(it) } ?: return@runOnUiThread
+                    warnIfCleartextTransport(su)
                     IptvProviderStore.upsert(prefs, IptvProviderConfig(
                         id = IptvProviderStore.newId(), type = "xtream", name = form["name"]?.takeIf { it.isNotBlank() } ?: "QR Xtream",
                         enabled = true, url = su, username = form["username"], password = form["password"]
@@ -510,6 +524,7 @@ internal fun MainActivity.showProviderSettings() {
                 }
                 "stalker" -> {
                     val su = form["stalkerUrl"]?.let { normalizeServerUrl(it) } ?: return@runOnUiThread
+                    warnIfCleartextTransport(su)
                     val mac = form["stalkerMac"]?.takeIf { it.isNotBlank() } ?: return@runOnUiThread
                     // MAC rides in userAgent - the same slot Stalker configs use for it
                     // everywhere else (see IptvProviderConfig / loadAllConfiguredProviders).
@@ -529,6 +544,7 @@ internal fun MainActivity.showProviderSettings() {
                     // screens) and calls onProviderReceived with type "jellyfin_quickconnect"
                     // instead. This path is password-only.
                     val url = form["jellyfinServerUrl"]?.let { normalizeServerUrl(it, defaultScheme = "https") } ?: return@runOnUiThread
+                    warnIfCleartextTransport(url)
                     val user = form["jellyfinUsername"]; val pass = form["jellyfinPassword"]
                     prefs.edit().putString("jellyfin_url", url).putString("jellyfin_user", user).putString("jellyfin_pass", pass).putBoolean("jellyfin_provider_enabled", true).apply()
                     
@@ -1135,7 +1151,9 @@ internal fun MainActivity.showProviderSettings() {
                     AlertDialog.Builder(this@showProviderSettings)
                         .setTitle("Update available")
                         .setMessage("Lumora v${info.latestVersion} is available.\nCurrent: v${info.currentVersion}\n\n${info.releaseNotes.take(200)}")
-                        .setPositiveButton("Update") { _, _ -> downloadAndInstallUpdate(info.downloadUrl, info.latestVersion) }
+                        .setPositiveButton("Update") { _, _ ->
+                            downloadAndInstallUpdate(info.downloadUrl, info.latestVersion, info.sha256)
+                        }
                         .setNegativeButton("Later", null)
                         .show()
                 }
@@ -1237,6 +1255,7 @@ internal fun MainActivity.showProviderSettings() {
                 if (url.isBlank()) {
                     Toast.makeText(this, "Enter an M3U URL", Toast.LENGTH_SHORT).show(); return@setOnClickListener
                 }
+                warnIfCleartextTransport(url)
                 IptvProviderStore.upsert(prefs, IptvProviderConfig(
                     id = id, type = "m3u", name = name.ifBlank { "M3U/M3U8 Playlist" }, enabled = true,
                     liveEnabled = prevConfig?.liveEnabled ?: true,
@@ -1247,6 +1266,7 @@ internal fun MainActivity.showProviderSettings() {
             "xtream" -> {
                 val url = xtreamUrl.text.toString().trim().let { if (it.isBlank()) it else normalizeServerUrl(it) }
                 if (url.isBlank()) { Toast.makeText(this, "Enter a server URL", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+                warnIfCleartextTransport(url)
                 IptvProviderStore.upsert(prefs, IptvProviderConfig(
                     id = id, type = "xtream", name = name.ifBlank { "Xtream" }, enabled = true,
                     liveEnabled = prevConfig?.liveEnabled ?: true,
@@ -1257,6 +1277,7 @@ internal fun MainActivity.showProviderSettings() {
             "stalker" -> {
                 val url = stalkerUrl.text.toString().trim().let { if (it.isBlank()) it else normalizeServerUrl(it) }
                 if (url.isBlank()) { Toast.makeText(this, "Enter a server URL", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+                warnIfCleartextTransport(url)
                 IptvProviderStore.upsert(prefs, IptvProviderConfig(
                     id = id, type = "stalker", name = name.ifBlank { "Stalker Portal" }, enabled = true,
                     liveEnabled = prevConfig?.liveEnabled ?: true,
@@ -1269,6 +1290,7 @@ internal fun MainActivity.showProviderSettings() {
                 // slot under the hood, stored as loose prefs (see hasJellyfinConfigured()).
                 val url = jellyfinUrl.text.toString().trim().let { if (it.isBlank()) it else normalizeServerUrl(it, defaultScheme = "https") }
                 if (url.isBlank()) { Toast.makeText(this, "Enter a server URL", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+                warnIfCleartextTransport(url)
                 prefs.edit()
                     .putString("jellyfin_url", url)
                     .putString("jellyfin_user", jellyfinUser.text.toString().trim())

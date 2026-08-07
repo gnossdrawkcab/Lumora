@@ -97,7 +97,7 @@ class QrPairingManager(private val context: Context) {
         val typeParam = if (providerType != null) "&p=$providerType" else ""
         val url = "http://$host:$port/pair?t=$token$typeParam"
         val expiresAt = System.currentTimeMillis() + PAIRING_TIMEOUT_MS
-        Log.d(TAG, "Server listening on $host:$port, token=$token type=$providerType")
+        Log.d(TAG, "Server listening on $host:$port, token=<redacted> type=$providerType")
 
         serverSocket = socket
         activeToken = token

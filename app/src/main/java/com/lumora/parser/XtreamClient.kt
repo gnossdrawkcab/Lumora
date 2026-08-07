@@ -65,7 +65,7 @@ class XtreamClient(private val client: OkHttpClient) {
     suspend fun authenticate(provider: Provider): Result<ServerInfo> = withContext(Dispatchers.IO) {
         try {
             val url = buildApiUrl(provider, "")
-            Log.d(TAG, "Auth URL: ${url.take(80)}...")
+            Log.d(TAG, "Authenticating with Xtream provider")
             lastFetchError = null
             val json = fetchJson(url)
                 ?: return@withContext Result.failure(Exception(lastFetchError ?: "Empty response from server"))
@@ -437,7 +437,7 @@ class XtreamClient(private val client: OkHttpClient) {
             val response = client.newCall(request).execute()
             if (!response.isSuccessful) {
                 lastFetchError = "Server returned HTTP ${response.code}"
-                Log.w(TAG, "HTTP ${response.code} for $url")
+                Log.w(TAG, "Xtream request returned HTTP ${response.code}")
                 return null
             }
             val body = response.body?.string() ?: return null
@@ -461,7 +461,7 @@ class XtreamClient(private val client: OkHttpClient) {
             }
         } catch (e: Exception) {
             lastFetchError = e.message ?: e.javaClass.simpleName
-            Log.w(TAG, "Network error fetching $url: ${e.message}")
+            Log.w(TAG, "Xtream network request failed: ${e.message}")
             null
         }
     }

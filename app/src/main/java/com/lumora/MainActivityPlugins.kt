@@ -25,6 +25,8 @@ import com.lumora.plugin.ResolveResult
 import com.lumora.plugin.SearchResult
 import com.lumora.plugin.js.PluginScript
 import com.lumora.plugin.js.PluginScriptManager
+import com.lumora.plugin.js.readUtf8Capped
+import com.lumora.plugin.js.PluginSourcePolicy
 import com.lumora.plugin.js.PluginStore
 import com.lumora.plugin.js.PluginStoreManager
 import com.lumora.plugin.js.StoreScript
@@ -113,7 +115,7 @@ internal fun MainActivity.showTrailerPlayer(youtubeKey: String) {
             // outright: this player never legitimately needs to leave the embed URL.
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 if (request.isForMainFrame && !request.url.toString().contains("/embed/")) {
-                    android.util.Log.d("TrailerPlayer", "blocked main-frame navigation to ${request.url}")
+                    android.util.Log.d("TrailerPlayer", "blocked main-frame navigation to host=${request.url.host}")
                     return true
                 }
                 return false
@@ -121,20 +123,20 @@ internal fun MainActivity.showTrailerPlayer(youtubeKey: String) {
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                 android.util.Log.e(
                     "TrailerPlayer",
-                    "onReceivedError url=${request.url} code=${error.errorCode} desc=${error.description}"
+                    "onReceivedError host=${request.url.host} code=${error.errorCode} desc=${error.description}"
                 )
             }
             override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
                 android.util.Log.e(
                     "TrailerPlayer",
-                    "onReceivedHttpError url=${request.url} status=${response.statusCode}"
+                    "onReceivedHttpError host=${request.url.host} status=${response.statusCode}"
                 )
             }
             override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
-                android.util.Log.d("TrailerPlayer", "onPageStarted url=$url")
+                android.util.Log.d("TrailerPlayer", "onPageStarted")
             }
             override fun onPageFinished(view: WebView, url: String?) {
-                android.util.Log.d("TrailerPlayer", "onPageFinished url=$url")
+                android.util.Log.d("TrailerPlayer", "onPageFinished")
             }
         }
         webChromeClient = object : WebChromeClient() {
@@ -477,9 +479,8 @@ internal fun MainActivity.wirePluginsPane(dialogView: View, onProviderAdded: () 
     detailPane.visibility = View.GONE
 
     fun fetchAndAddPluginScript(url: String) {
-        val scheme = url.substringBefore("://", "").lowercase(Locale.US)
-        if (url.isBlank() || (scheme != "http" && scheme != "https")) {
-            Toast.makeText(this, "Enter a valid http(s) link", Toast.LENGTH_SHORT).show()
+        if (!PluginSourcePolicy.isAllowed(url)) {
+            Toast.makeText(this, "Plugin scripts must use a valid HTTPS link", Toast.LENGTH_SHORT).show()
             return
         }
         scope.launch {
@@ -487,7 +488,7 @@ internal fun MainActivity.wirePluginsPane(dialogView: View, onProviderAdded: () 
                 withContext(Dispatchers.IO) {
                     val request = Request.Builder().url(url).build()
                     OkHttpClient().newCall(request).execute().use { resp ->
-                        if (resp.isSuccessful) resp.body?.string() else null
+                        if (resp.isSuccessful) resp.body?.readUtf8Capped(512 * 1024) else null
                     }
                 }
             } catch (e: Exception) {
@@ -1015,9 +1016,8 @@ internal fun MainActivity.wirePluginStoresSection(dialogView: View, manager: Plu
             .setView(container)
             .setPositiveButton("Add") { _, _ ->
                 val url = input.text.toString().trim()
-                val scheme = url.substringBefore("://", "").lowercase(Locale.US)
-                if (url.isBlank() || (scheme != "http" && scheme != "https")) {
-                    Toast.makeText(this, "Enter a valid http(s) link", Toast.LENGTH_SHORT).show()
+                if (!PluginSourcePolicy.isAllowed(url)) {
+                    Toast.makeText(this, "Plugin stores must use HTTPS", Toast.LENGTH_SHORT).show()
                 } else {
                     pluginStoreManager.addStore(url)
                     renderStoreList()

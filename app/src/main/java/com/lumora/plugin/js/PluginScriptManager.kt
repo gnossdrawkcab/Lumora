@@ -122,6 +122,9 @@ class PluginScriptManager(
      * Series tab. Enabling is a separate, visible act on the plugin's own page.
      */
     suspend fun installScript(text: String): InstallResult {
+        if (text.toByteArray(Charsets.UTF_8).size > MAX_PLUGIN_BYTES) {
+            return InstallResult.Rejected("Plugin script is larger than 512 KB")
+        }
         val fallbackId = "script-${System.currentTimeMillis()}"
         val manifest = try {
             engine.probeManifest(text)
@@ -205,6 +208,7 @@ class PluginScriptManager(
         private const val PREF_ENABLED_SCRIPTS = "plugin_enabled_scripts"
         /** Excluded from Auto Backup - see the pluginPrefs kdoc. */
         private const val PLUGIN_PREFS_FILE = "plugin_prefs"
+        private const val MAX_PLUGIN_BYTES = 512 * 1024
         private val KNOWN_CAPABILITIES = setOf(
             JsPluginContract.CAPABILITY_PROVIDER_DISCOVERY,
             JsPluginContract.CAPABILITY_STREAM_SEARCH,

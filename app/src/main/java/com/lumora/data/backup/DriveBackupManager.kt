@@ -1,6 +1,7 @@
 package com.lumora.data.backup
 
 import android.content.Context
+import com.lumora.data.security.SecurePreferences
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
@@ -43,7 +44,7 @@ class DriveBackupManager(private val context: Context) {
      * Check if the user is signed into Google Drive.
      */
     fun isSignedIn(): Boolean {
-        val token = context.getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
+        val token = SecurePreferences.open(context)
             .getString(PREFS_KEY_TOKEN, null)
         return !token.isNullOrBlank()
     }
@@ -52,7 +53,7 @@ class DriveBackupManager(private val context: Context) {
      * Sign out of Google Drive.
      */
     fun signOut() {
-        context.getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
+        SecurePreferences.open(context)
             .edit()
             .remove(PREFS_KEY_TOKEN)
             .apply()
@@ -62,7 +63,7 @@ class DriveBackupManager(private val context: Context) {
      * Get the current Drive sync status.
      */
     fun getStatus(): DriveStatus {
-        val prefs = context.getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
+        val prefs = SecurePreferences.open(context)
         return DriveStatus(
             lastPushAt = prefs.getLong(PREFS_KEY_LAST_PUSH, 0L).takeIf { it > 0 },
             lastPullAt = prefs.getLong(PREFS_KEY_LAST_PULL, 0L).takeIf { it > 0 },
@@ -110,7 +111,7 @@ class DriveBackupManager(private val context: Context) {
                         setAppDataFolder(token, newFileId)
                     }
                 }
-                context.getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
+                SecurePreferences.open(context)
                     .edit().putLong(PREFS_KEY_LAST_PUSH, System.currentTimeMillis()).apply()
                 Log.d(TAG, "Backup pushed to Drive")
                 true
@@ -145,7 +146,7 @@ class DriveBackupManager(private val context: Context) {
 
                 val json = BufferedReader(InputStreamReader(conn.inputStream)).readText()
 
-                context.getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
+                SecurePreferences.open(context)
                     .edit().putLong(PREFS_KEY_LAST_PULL, System.currentTimeMillis()).apply()
 
                 Log.d(TAG, "Backup pulled from Drive")
@@ -160,14 +161,14 @@ class DriveBackupManager(private val context: Context) {
     }
 
     private fun getAccessToken(): String? {
-        val prefs = context.getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
+        val prefs = SecurePreferences.open(context)
         val encrypted = prefs.getString(PREFS_KEY_TOKEN, null) ?: return null
         return CredentialEncryption.decrypt(context, encrypted)
     }
 
     fun saveAccessToken(token: String) {
         val encrypted = CredentialEncryption.encrypt(context, token)
-        context.getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
+        SecurePreferences.open(context)
             .edit()
             .putString(PREFS_KEY_TOKEN, encrypted)
             .apply()

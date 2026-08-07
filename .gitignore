@@ -15,3 +15,6 @@ keystore.properties
 node_modules/
 package-lock.json
 package.json
+
+# Generated local knowledge graph (rebuild with `graphify update .`).
+graphify-out/
