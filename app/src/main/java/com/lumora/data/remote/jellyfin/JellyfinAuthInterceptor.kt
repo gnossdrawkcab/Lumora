@@ -10,11 +10,19 @@ import okhttp3.Response
 class JellyfinAuthInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
-        val host = JellyfinSession.serverHost
-        val token = JellyfinSession.accessToken
-        if (host == null || token == null || (!request.url.host.endsWith(host) && request.url.host != host) || !request.header("X-Emby-Token").isNullOrBlank()) {
+        val active = JellyfinSession.active
+        if (active == null || !sameOrigin(request.url, active.origin) ||
+            !request.header("X-Emby-Token").isNullOrBlank()
+        ) {
             return chain.proceed(request)
         }
-        return chain.proceed(request.newBuilder().header("X-Emby-Token", token).build())
+        return chain.proceed(request.newBuilder().header("X-Emby-Token", active.accessToken).build())
+    }
+
+    companion object {
+        /** Exact origin matching prevents a token for jellyfin.example from being attached to
+         *  eviljellyfin.example, a scheme downgrade, or a different service on another port. */
+        internal fun sameOrigin(left: okhttp3.HttpUrl, right: okhttp3.HttpUrl): Boolean =
+            left.scheme == right.scheme && left.host == right.host && left.port == right.port
     }
 }

@@ -15,7 +15,7 @@ https://discord.gg/cNKYGhQWvq
 ## Highlights
 
 - **Similar to TiVimate or Sparkle TV, without paying for the features.** Multiple playlists, the EPG guide, DVR recording, catch-up, favourites and multi-provider support are the things those players put behind a premium subscription or one-off unlock. In Lumora they're all just included, free.
-- **Video on the car screen, over Android Auto — parked only.** Lumora shows up in the Android Auto launcher (wireless or wired) and plays your catalogue on the head unit itself, which almost no other player does. It is **not a driving feature and cannot be one**: Android Auto removes this class of app from the screen the moment the vehicle moves, so what you get is video while parked or on a passenger display, and nothing at all while driving. Every session opens on a warning that says exactly that. See [Android Auto](#android-auto-parked-only).
+- **Video on the car screen, over Android Auto — parked only.** Lumora shows up in the Android Auto launcher (wireless or wired) and plays your catalogue on the head unit itself. It is **not a driving feature**: Lumora disables video unless Android Auto reports the vehicle is stopped, leaving audio-only playback while moving or when speed is unknown. Every session opens on a warning that says exactly that. See [Android Auto](#android-auto-parked-only).
 - **Optional Jellyfin support, properly done.** Point it at your own Jellyfin server and its films and series merge into the same shelves as your IPTV catalogue (same title from both = one card). Resume points, watched marks and favourites sync both ways with the server, and files your stick can't decode are converted by the server on the fly rather than opening to a black screen.
 - **Run every subscription at once.** Any number of Xtream Codes, M3U and Stalker Portal providers active together, merged into one catalogue instead of switching between playlists.
 - **Live TV that tidies itself up.** Duplicate feeds of the same channel collapse into one entry at the best available quality (4K → FHD → HD → SD), with instant fallback to any other copy mid-playback; Sports, News, Music and Cinema surface at the top automatically whatever your provider filed them under.
@@ -90,9 +90,9 @@ a server, and everything below is inert if you don't.
 Lumora appears in the Android Auto launcher — wireless or wired — and renders video onto the head unit's own screen, rather than sending audio only.
 
 - **Real video on the car display**, not a media-browser audio shell: the projected surface backs a virtual display, so the car screen is a proper window with the picture and its title, and the Android Auto templates are only chrome drawn over it
-- **Parked use is enforced by the car, not by an honour system.** Android Auto pulls apps of this class off the screen as soon as the vehicle is in motion — the same thing it does to every other sideloaded video app. Lumora does no speed detection of its own and you should not treat it as a safety control; the host is what stops the picture
+- **Parked use is fail-closed.** Lumora requests Android Auto's car-speed permission and enables its video track only after receiving a successful stopped-speed signal. Moving, denied, unavailable and not-yet-known states are audio-only. Android Auto may additionally close the app when motion is detected; neither layer should be bypassed.
 - **Every session opens on a disclaimer** stating the parked-only limit, with the full "as is", no-warranty, no-liability notice in *Settings → Playback Settings*
-- **Your existing catalogue, no phone setup needed** — channels come from Lumora's on-disk cache, so a car session works even if the app hasn't been opened on the phone this boot. Only streams playable from a URL alone are offered; Stalker commands, plugin tokens and Jellyfin's negotiated streams need the phone app to resolve them first
+- **Your existing catalogue, no phone setup needed** — channels come from Lumora's on-disk cache, so a car session works even if the app hasn't been opened on the phone this boot. Direct IPTV and authenticated Jellyfin Live TV streams use the shared playback resolver; Stalker commands and plugin tokens remain excluded from the car list.
 - **Sideload only.** Declaring the car category for something that isn't navigation is against Google Play's policy for cars, so this build cannot ship on Play. You must also enable **Unknown sources** in Android Auto's developer settings before Lumora appears in the car launcher at all
 
 Lumora is not affiliated with, endorsed by, or certified by Google. Android and Android Auto are trademarks of Google LLC.
@@ -126,16 +126,18 @@ Anything else on Android 7.1 (SDK 25) or newer should work; those are just the d
 
 ## Installation
 
-Grab the latest signed APK from the [Releases](https://github.com/disclosurez/lumora/releases) page and sideload it. Lumora checks GitHub Releases on launch and will prompt you when a new version is available.
+Grab the latest signed APK from this fork's [Releases](https://github.com/gnossdrawkcab/Lumora/releases) page and sideload it. Lumora checks this fork's GitHub Releases on launch and will prompt you when a new version is available.
 
 To use it in the car, also switch on **Unknown sources** in Android Auto's developer settings (Android Auto → Settings → tap *Version* ten times → ⋮ → Developer settings → Unknown sources). Lumora is sideloaded, so the car launcher hides it until that's on.
 
 On first launch, you'll be asked to add a provider — this is your own Xtream Codes / M3U / Stalker Portal IPTV subscription, or your own Jellyfin server. Lumora has no content of its own and cannot supply one for you.
 
+Provider credentials and Jellyfin access tokens are stored with Android Keystore-backed encrypted preferences. HTTPS is preferred; Lumora displays a warning when you explicitly save an HTTP provider because many legacy IPTV and LAN servers still require cleartext transport.
+
 ## Building from Source
 
 ```bash
-git clone https://github.com/disclosurez/lumora.git
+git clone https://github.com/gnossdrawkcab/Lumora.git
 cd lumora
 ./gradlew :app:assembleDebug
 ```
@@ -188,4 +190,4 @@ Issues and pull requests are welcome. Please open an issue describing the change
 
 ## License
 
-No license has been specified for this project yet. All rights reserved by the author unless/until a license is added.
+Lumora is distributed under the [MIT License](LICENSE).

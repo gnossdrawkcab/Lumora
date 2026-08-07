@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### Security
+- Provider settings and Jellyfin bearer tokens migrate from plaintext preferences to Android Keystore-backed encrypted storage; Keystore-bound ciphertext is excluded from automatic cloud/device backup.
+- Jellyfin authentication headers now require an exact scheme/host/port match, preventing token disclosure to suffix-lookalike hosts or cleartext redirects.
+- Self-updates require the official GitHub release URL, GitHub's SHA-256 asset digest, the Lumora package name, and the installed signing certificate before opening the installer.
+- Plugin and QR pairing tokens are redacted from logs. Plugin sources/stores require HTTPS (loopback HTTP remains for development), downloads and host responses are size-limited, and a timed-out native script can consume at most one process-wide worker.
+- CI actions are commit-pinned, and release signing no longer passes the signing key to a third-party action.
+
+### Android Auto
+- A real car-speed gate now keeps video disabled until a stopped vehicle is positively confirmed. Moving, denied and unavailable speed states are audio-only.
+- Car playback uses the shared Jellyfin connector/resolver, allowing authenticated cached Jellyfin Live TV channels to play without an open phone activity.
+
+### Build
+- Updated to Android Gradle Plugin 8.12.2 and Gradle 8.13, the supported toolchain for compile SDK 36.
+- Desktop QuickJS tests are skipped when their optional wrapper-java native library is not supplied, while the rest of the unit suite continues to run.
+
 ## 3.4
 
 ### Android Auto

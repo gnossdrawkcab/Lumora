@@ -2,6 +2,7 @@ package com.lumora.data.update
 
 import android.content.Context
 import android.util.Log
+import com.lumora.BuildConfig
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
@@ -14,7 +15,7 @@ import java.util.concurrent.TimeUnit
 class AppUpdateChecker(private val context: Context) {
 
     private val TAG = "AppUpdate"
-    private val GITHUB_REPO = "disclosurez/Lumora"
+    private val githubRepository = BuildConfig.UPDATE_REPOSITORY
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
@@ -24,6 +25,7 @@ class AppUpdateChecker(private val context: Context) {
         val latestVersion: String,
         val currentVersion: String,
         val downloadUrl: String,
+        val sha256: String?,
         val releaseNotes: String,
         val isUpdateAvailable: Boolean
     )
@@ -33,7 +35,7 @@ class AppUpdateChecker(private val context: Context) {
      */
     suspend fun checkForUpdate(): UpdateInfo? {
         return try {
-            val url = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
+            val url = "https://api.github.com/repos/$githubRepository/releases/latest"
             val request = Request.Builder().url(url)
                 .header("Accept", "application/vnd.github.v3+json")
                 .header("User-Agent", "Lumora/2.0")
@@ -53,12 +55,14 @@ class AppUpdateChecker(private val context: Context) {
             val assets = json.optJSONArray("assets")
 
             var downloadUrl = ""
+            var sha256: String? = null
             if (assets != null) {
                 for (i in 0 until assets.length()) {
                     val asset = assets.getJSONObject(i)
                     val name = asset.optString("name", "")
                     if (name.endsWith(".apk")) {
                         downloadUrl = asset.optString("browser_download_url", "")
+                        sha256 = UpdateVerifier.parseSha256Digest(asset.optString("digest", ""))
                         break
                     }
                 }
@@ -74,6 +78,7 @@ class AppUpdateChecker(private val context: Context) {
                 latestVersion = latestTag ?: currentVersion,
                 currentVersion = currentVersion,
                 downloadUrl = downloadUrl,
+                sha256 = sha256,
                 releaseNotes = releaseNotes.take(500),
                 isUpdateAvailable = isUpdate
             )

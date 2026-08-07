@@ -43,6 +43,7 @@ class PluginStoreManager(
     }
 
     fun addStore(url: String) {
+        require(PluginSourcePolicy.isAllowed(url)) { "Plugin stores must use HTTPS" }
         if (url == DEFAULT_STORE_URL) return
         val current = customStoreUrls().toMutableSet()
         current.add(url)
@@ -109,17 +110,21 @@ class PluginStoreManager(
 
     suspend fun fetchScriptText(fileUrl: String): String? = withContext(Dispatchers.IO) { fetchText(fileUrl) }
 
-    private fun fetchText(url: String): String? = try {
-        val request = Request.Builder().url(url).build()
-        httpClient.newCall(request).execute().use { response ->
-            if (response.isSuccessful) response.body?.string() else null
+    private fun fetchText(url: String): String? {
+        if (!PluginSourcePolicy.isAllowed(url)) return null
+        return try {
+            val request = Request.Builder().url(url).build()
+            httpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) response.body?.readUtf8Capped(MAX_STORE_RESPONSE_BYTES) else null
+            }
+        } catch (e: Exception) {
+            null
         }
-    } catch (e: Exception) {
-        null
     }
 
     companion object {
         private const val PREF_STORE_URLS = "plugin_store_urls"
+        private const val MAX_STORE_RESPONSE_BYTES = 1024 * 1024
         const val DEFAULT_STORE_URL = "https://raw.githubusercontent.com/disclosurez/Lumora-Plugins/master/scripts/index.json"
     }
 }

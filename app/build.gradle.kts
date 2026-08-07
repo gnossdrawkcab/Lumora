@@ -23,6 +23,8 @@ android {
         targetSdk = 36
         versionCode = 21
         versionName = "3.4"
+        // Fork builds only accept updates published by this fork.
+        buildConfigField("String", "UPDATE_REPOSITORY", "\"gnossdrawkcab/Lumora\"")
 
         ksp {
             arg("room.schemaLocation", "$projectDir/schemas")
@@ -64,6 +66,12 @@ android {
     buildFeatures {
         viewBinding = true
         buildConfig = true
+    }
+
+    lint {
+        // The inherited project has substantial pre-existing lint debt. Keep it explicitly
+        // baselined so CI still rejects any new issue introduced by this fork.
+        baseline = file("lint-baseline.xml")
     }
 
     compileOptions {
@@ -165,6 +173,7 @@ dependencies {
 
     // Android Auto (see auto/ - CarAppService).
     implementation("androidx.car.app:app:1.7.0")
+    implementation("androidx.car.app:app-projected:1.7.0")
 
     // Android TV
     implementation("androidx.tvprovider:tvprovider:1.1.0")
@@ -182,4 +191,16 @@ dependencies {
 // no-op when the property isn't set.
 tasks.withType<Test>().configureEach {
     systemProperty("test.quickjs.so", System.getProperty("test.quickjs.so") ?: "")
+    // QuickJS's Android artifact contains only Android-ABI native libraries. The plugin tests
+    // can run on a desktop JVM only when a separately-built wrapper-java .so is supplied; do
+    // not turn an ordinary clone/CI run red merely because that optional fixture is absent.
+    if (System.getProperty("test.quickjs.so").isNullOrBlank()) {
+        exclude(
+            "**/AnimeSenshiScriptTest.class",
+            "**/HostExceptionPropagationTest.class",
+            "**/JsPluginEngineTest.class",
+            "**/RedditScanScriptTest.class",
+            "**/TorrentSearchScriptTest.class",
+        )
+    }
 }

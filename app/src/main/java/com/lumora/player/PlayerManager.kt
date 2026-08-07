@@ -15,6 +15,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import com.lumora.data.security.SecurePreferences
 import java.util.concurrent.CopyOnWriteArrayList
 
 /**
@@ -135,7 +136,7 @@ class PlayerManager(
         // Sidecar subtitles are opt-in: subs are OFF by default, and only the DEFAULT-flagged
         // track is stamped SELECTION_FLAG_DEFAULT when the user has turned them on. Media3
         // leaves non-default text tracks unselected, so off means nothing auto-selects.
-        val subtitlesEnabled = context.getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
+        val subtitlesEnabled = SecurePreferences.open(context)
             .getBoolean("subtitles_enabled", false)
         if (subtitles.isNotEmpty()) {
             mediaItemBuilder.setSubtitleConfigurations(
@@ -200,7 +201,7 @@ class PlayerManager(
         // and the disable wins), which would have carried straight into the next episode.
         // A stream known to be a dub usually has its dialog baked into the audio track, so the
         // sidecar subtitles only come on when the user opted in (subtitles_with_dub).
-        val subtitlesWithDub = context.getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
+        val subtitlesWithDub = SecurePreferences.open(context)
             .getBoolean("subtitles_with_dub", false)
         // Whole force-enable block is gated on the opt-in pref: when subtitles are OFF this
         // keeps Media3's defaults (with no DEFAULT-flagged sidecar track above, no text track
@@ -306,12 +307,12 @@ class PlayerManager(
 
     /** The user's audio language from Settings > General, defaulting to English. */
     private fun preferredAudioLanguage(): String =
-        context.getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
+        SecurePreferences.open(context)
             .getString("audio_language", "en") ?: "en"
 
     /** The user's subtitle language from Settings > General, defaulting to English. */
     private fun preferredSubtitleLanguage(): String =
-        context.getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
+        SecurePreferences.open(context)
             .getString("subtitle_language", "en") ?: "en"
 
     private fun attachOneShotAudioPreference(audio: String) {

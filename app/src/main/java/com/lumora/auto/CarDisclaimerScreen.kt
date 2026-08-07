@@ -5,6 +5,8 @@ import androidx.car.app.Screen
 import androidx.car.app.model.Action
 import androidx.car.app.model.MessageTemplate
 import androidx.car.app.model.Template
+import android.content.pm.PackageManager
+import androidx.core.content.ContextCompat
 
 /**
  * The first thing the car screen shows, every session.
@@ -28,9 +30,28 @@ class CarDisclaimerScreen(
                     .setTitle("I'm not driving - continue")
                     .setOnClickListener {
                         session.disclaimerAccepted = true
-                        screenManager.push(CarBrowseScreen(carContext, session))
+                        continueAfterMotionPermission()
                     }
                     .build()
             )
             .build()
+
+    private fun continueAfterMotionPermission() {
+        fun proceed() {
+            session.motionGate.start()
+            screenManager.push(CarBrowseScreen(carContext, session))
+        }
+        if (ContextCompat.checkSelfPermission(carContext, CarMotionGate.SPEED_PERMISSION) ==
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            proceed()
+            return
+        }
+        runCatching {
+            carContext.requestPermissions(
+                listOf(CarMotionGate.SPEED_PERMISSION),
+                ContextCompat.getMainExecutor(carContext),
+            ) { _, _ -> proceed() }
+        }.onFailure { proceed() }
+    }
 }

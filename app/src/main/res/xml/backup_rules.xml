@@ -18,6 +18,10 @@
          (which do want backing up) meant a reinstall restored the enabled set and plugins came
          back switched on. See PluginScriptManager.pluginPrefs. -->
     <exclude domain="sharedpref" path="plugin_prefs.xml" />
+    <!-- EncryptedSharedPreferences keys are bound to this installation's Android Keystore key.
+         Restoring the ciphertext without that key makes the file unreadable and can break app
+         startup; users can use Lumora's explicit encrypted/export flow for portable backups. -->
+    <exclude domain="sharedpref" path="iptv_secure_prefs.xml" />
     <!-- The cached catalogue is large (tens of MB on a merged setup), rebuilt from the network
          on first load anyway, and pins the restore to whatever the providers looked like then. -->
     <exclude domain="file" path="channels_cache.txt" />

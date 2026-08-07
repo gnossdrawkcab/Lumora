@@ -111,7 +111,7 @@ class CastManager(private val context: Context) {
 
         try {
             remoteMediaClient.load(mediaInfo, loadOptions)
-            android.util.Log.d("CastManager", "Loaded $url (type=$contentType, stream=$streamType)")
+            android.util.Log.d("CastManager", "Loaded media (type=$contentType, stream=$streamType)")
             return true
         } catch (e: Exception) {
             android.util.Log.e("CastManager", "Failed to load media", e)

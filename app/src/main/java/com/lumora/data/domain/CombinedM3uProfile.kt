@@ -1,6 +1,7 @@
 package com.lumora.data.domain
 
 import android.content.Context
+import com.lumora.data.security.SecurePreferences
 import com.lumora.data.local.LumoraDatabase
 import com.lumora.data.local.entity.ChannelEntity
 import kotlinx.coroutines.Dispatchers
@@ -21,7 +22,7 @@ data class CombinedM3uProfile(
         private const val PREFS_KEY = "combined_m3u_profiles"
 
         fun loadAll(context: Context): List<CombinedM3uProfile> {
-            val prefs = context.getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
+            val prefs = SecurePreferences.open(context)
             val json = prefs.getString(PREFS_KEY, "[]") ?: "[]"
             return try {
                 val arr = org.json.JSONArray(json)
@@ -40,7 +41,7 @@ data class CombinedM3uProfile(
         }
 
         fun saveAll(context: Context, profiles: List<CombinedM3uProfile>) {
-            val prefs = context.getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
+            val prefs = SecurePreferences.open(context)
             val arr = org.json.JSONArray()
             for (p in profiles) {
                 arr.put(org.json.JSONObject().apply {

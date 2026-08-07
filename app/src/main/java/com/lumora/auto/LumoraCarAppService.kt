@@ -49,6 +49,7 @@ class LumoraCarSession : Session(), DefaultLifecycleObserver {
     /** Created here, not per-screen: switching between the channel list and the player must
      *  not interrupt what is playing. */
     val playback: CarPlayback by lazy { CarPlayback(carContext) }
+    val motionGate: CarMotionGate by lazy { CarMotionGate(carContext) }
 
     init {
         // Session exposes its lifecycle rather than overridable callbacks, so teardown hangs
@@ -63,6 +64,7 @@ class LumoraCarSession : Session(), DefaultLifecycleObserver {
     override fun onCreateScreen(intent: Intent): Screen = CarDisclaimerScreen(carContext, this)
 
     override fun onDestroy(owner: LifecycleOwner) {
+        motionGate.stop()
         playback.release()
     }
 }

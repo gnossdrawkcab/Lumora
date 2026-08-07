@@ -47,14 +47,19 @@ class CarPlayerScreen(
 
     private var virtualDisplay: VirtualDisplay? = null
     private var presentation: CarPresentation? = null
+    private val motionListener: (CarMotionGate.State) -> Unit = { state -> applyMotionState(state) }
 
     init {
         lifecycle.addObserver(this)
+        // No surface is allowed to show a frame until PARKED has been positively observed.
+        session.playback.setVideoEnabled(false)
+        session.motionGate.addListener(motionListener)
         carContext.getCarService(AppManager::class.java).setSurfaceCallback(this)
     }
 
     override fun onDestroy(owner: LifecycleOwner) {
         carContext.getCarService(AppManager::class.java).setSurfaceCallback(null)
+        session.motionGate.removeListener(motionListener)
         tearDown()
     }
 
@@ -116,7 +121,7 @@ class CarPlayerScreen(
             // The SurfaceView only exists once the Presentation's window is created, which
             // show() guarantees - so the player is attached here rather than at construction.
             session.playback.setSurfaceView(videoSurface)
-            setStatus(session.playback.current?.name.orEmpty())
+            applyMotionState(session.motionGate.state)
         }
     }
 
@@ -132,6 +137,20 @@ class CarPlayerScreen(
         presentation = null
         virtualDisplay?.release()
         virtualDisplay = null
+    }
+
+    private fun applyMotionState(state: CarMotionGate.State) {
+        val videoAllowed = state == CarMotionGate.State.PARKED
+        session.playback.setVideoEnabled(videoAllowed)
+        presentation?.setVideoVisible(videoAllowed)
+        val title = session.playback.current?.name.orEmpty()
+        presentation?.setStatus(
+            when (state) {
+                CarMotionGate.State.PARKED -> title
+                CarMotionGate.State.MOVING -> "Audio only — vehicle moving"
+                CarMotionGate.State.UNKNOWN -> "Audio only — waiting for parked confirmation"
+            }
+        )
     }
 
 }
